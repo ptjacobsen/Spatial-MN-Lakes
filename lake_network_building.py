@@ -38,6 +38,7 @@ def cleandowlknum(dowlknum):
         return dowlknum
 lakes['dowlknum'] = lakes['dowlknum'].apply(cleandowlknum)
 
+
 ##remove full lakes and only keep the sub basin
 # theres no main basin variables. (sub_flag=N for all lakes, not just those with subbasin)
 # so we have to find all the subbasins, get their parent dowlknum from their dowlknum
@@ -100,8 +101,6 @@ for c in connectors.index:
 #remove the rest of the connectors
 streams = streams[streams['Strm_type_'] != 'Connector (Lake)']
 streams = streams[streams['Strm_type_'] != 'Connector (Wetland)']
-
-
 
 
 ## 4. Check which streams run into each lake and which runout
@@ -271,6 +270,9 @@ streams.drop(['source lake id', 'deposit lake id'], axis=1, inplace=True)
 ##7. Save new streams to file
 print('Saving new stream network to file...')
 
+streams['source lake'] = streams['source lake'].apply(int)
+
+
 streams.to_file(OUTPUT_FILEPATH,driver='GeoJSON')
 
 #Using igraph because of it's query capabilities, even though it is slow to build
@@ -309,15 +311,17 @@ for f in data['features']:
                source_lake=f['properties']['source lake'])
 
 g.save(G, 'D/DNR HYDRO/corrected streams igraph.pickle')
-
 G = g.read('D/DNR HYDRO/corrected streams igraph.pickle')
 
 import pandas as pd
 import numpy as np
 
+
 def upstream_lakes(G,dowlknum):
     df = pd.DataFrame(index=range(len(G.vs)))
     dep_es = G.es.select(deposit_lake_eq=dowlknum)
+    if len(dep_es) == 0:
+        return pd.DataFrame(columns=['lake','distance'])
     for i in range(len(dep_es)):
         df[str(i)] = G.shortest_paths_dijkstra(source=dep_es[i].source, weights='length')[0]
     df['short dist'] = df.apply(min, axis=1)
@@ -328,7 +332,7 @@ def upstream_lakes(G,dowlknum):
     dists = []
     for v in df.index:
         for e in G.es(_target = v):
-            if e['source_lake'] is not None:
+            if e['source_lake'] != '':
                 src_lakes.append(e['source_lake'])
                 dists.append(df.loc[v,'short dist'])
                 break #once we get on source lake there cant be any more
@@ -338,4 +342,42 @@ def upstream_lakes(G,dowlknum):
     # that would result in two dists to the same lake
     ld = pd.DataFrame(ld.groupby('lake').min()).reset_index()
     return ld
+
+
+LAKES_CLEAN_FILEPATH = 'D/DNR HYDRO/lakes clean.geojson'
+lakes = gpd.read_file(LAKES_CLEAN_FILEPATH)
+
+dowlknums_str = lakes['dowlknum'].apply(lambda x: str(x).zfill(8))
+
+sdmat = np.empty((len(lakes),len(lakes)))
+sdmat.fill(np.nan)
+
+
+tenpct = int(len(lakes) / 10)
+counter = 0
+
+for i in dowlknums_str.index:
+
+    counter +=1
+    if counter % tenpct == 0:
+        print(str(int(counter / tenpct)* 10) + '%')
+
+    up_lakes = upstream_lakes(G,dowlknums_str[i])
+
+    for i2 in up_lakes.index:
+
+        #get the location of this lake in the distance matrix
+        #some lakes will be in the network, but not the cleaned lakes file
+        # they can be ignored
+
+        try:
+            j = dowlknums_str[dowlknums_str == up_lakes['lake'][i2]].index[0]
+        except IndexError:
+            continue
+
+        sdmat[i,j] = up_lakes['distance'][i2]
+
+
+
+np.save('D/stream dist matrix',sdmat)
 

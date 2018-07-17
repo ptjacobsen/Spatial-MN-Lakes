@@ -14,6 +14,7 @@ all_stations = pd.read_fwf(StringIO(r.text),colspecs= cs, header=None, names=['s
 mn_stations = all_stations[all_stations['state']=='MN']
 mn_stations.to_csv('D/Weather/mn_station_locations.csv',index=False)
 
+#I also want to get the locations outside Minnesota so we don't have to extrapolate on the edges
 mn_region_stations = all_stations[all_stations['state'].isin(['MN','SD','IA','WI','ND','MB','ON'])]
 #reduce the number of stations
 mn_region_stations = mn_region_stations[mn_region_stations['long'] > -100] #western two thirds of SD ND
@@ -21,12 +22,9 @@ mn_region_stations = mn_region_stations[mn_region_stations['lat'] > 42] #top hal
 mn_region_stations = mn_region_stations[mn_region_stations['long'] < -86] #pretty much the nose of mn, 2/3 of wisc
 mn_region_stations = mn_region_stations[mn_region_stations['lat'] < 52] #Winnipeg and below
 
-mn_region_stations.to_csv('/home/ptjacobsen/Geocomputation/Dissertation/MN Lakes/D/Weather/mn_region_station_locations.csv',index=False)
+mn_region_stations.to_csv('D/Weather/mn_region_station_locations.csv',index=False)
 
-#over 1000 stations just for MN
-#nice.
-#probably they all dont have regular coverage\
-stationId = 'US1MNHN0009'
+
 def get_station_data(stationId,min_year = 1990):
     r = requests.get('https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/all/' + stationId + '.dly')
     cs = [(0,11),(11,15),(15,17),(17,21)]
@@ -71,7 +69,8 @@ def get_station_data(stationId,min_year = 1990):
     data = data.sort_values(['element', 'year', 'month', 'day']).reset_index(drop=True)
     return data
 
-
+#we want to see which stations have regular coverage. I don't want to included random stations that just have a periodic
+# data collection
 new_cols = []
 es = []
 for stationId in mn_region_stations.stationId:
@@ -91,24 +90,27 @@ for e in es:
 
 df['all'] = df.sum(1)
 df.sort_values('all',ascending=False,inplace=True)
+
+#this table shows how many observations of each variable each sample has
 df.to_csv('D/Weather/MN region weather sample coverage.csv')
-#top 100 precipitation locations: (roughly the same as snow
-df = pd.read_csv('/home/ptjacobsen/Geocomputation/Dissertation/MN Lakes/D/Weather/MN region weather sample coverage.csv', index_col=0)
+
+#I want to now pull all the data from the locations that have consistent data
+df = pd.read_csv('D/Weather/MN region weather sample coverage.csv', index_col=0)
 df.reset_index(inplace=True)
-good_precip_locs = df[df['PRCP'] > 8000]['index']
+good_precip_locs = df[df['PRCP'] > 8000]['index'] #8000 is a arbitrary number i selected for the cutoff of the top tier
 precip_table = [get_station_data(id) for id in good_precip_locs]
 precipitation = pd.concat(precip_table)
 precipitation = precipitation[precipitation['element']=='PRCP']
-precipitation.to_csv('/home/ptjacobsen/Geocomputation/Dissertation/MN Lakes/D/Weather/precipitation.csv')
+precipitation.to_csv('D/Weather/precipitation.csv')
 
 good_temp_locs = df[df['TMAX'] > 8000]['index']
 temp_table = [get_station_data(id) for id in good_temp_locs]
 temp = pd.concat(temp_table)
 temp = temp[temp['element'].isin(['TMAX','TMIN'])]
-temp.to_csv('/home/ptjacobsen/Geocomputation/Dissertation/MN Lakes/D/Weather/temperature.csv')
+temp.to_csv('D/Weather/temperature.csv')
 
 good_wind_locs = df[df['AWND'] > 5000]['index']
 wind_table = [get_station_data(id) for id in good_wind_locs]
 wind = pd.concat(temp_table)
 wind = wind[wind['element']=='AWND']
-wind.to_csv('/home/ptjacobsen/Geocomputation/Dissertation/MN Lakes/D/Weather/wind.csv')
+wind.to_csv('D/Weather/wind.csv')

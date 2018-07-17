@@ -2,6 +2,7 @@ import geopandas as gpd
 
 LAKES_FILEPATH = 'D/DNR HYDRO/lakes.geojson'
 LAKES_CLEAN_FILEPATH = 'D/DNR HYDRO/lakes clean.geojson'
+LAKES_CLEAN_SHP_FILEPATH = 'D/DNR HYDRO/lakes clean'
 
 lakes = gpd.read_file(LAKES_FILEPATH)
 
@@ -65,7 +66,7 @@ lakes = lakes[lakes['shape_Area']>100000]
 #DNR level 8 the smalles
 l8 = gpd.read_file('D/DNR WATERSHED/DNR_Level_8.shp')
 l8 = l8[['AREA','MAJOR','MINOR5','CATCH_ID','geometry']]
-l8.columns = ['watershed 8 area','watershed major','watershed minor','watershed 8','geometry']
+l8.columns = ['ws 8 area','ws major','ws minor','ws 8','geometry']
 
 
 
@@ -91,3 +92,5 @@ lakes = lakes.drop(dups[dups['bad']].index)
 
 
 lakes.to_file(LAKES_CLEAN_FILEPATH,driver='GeoJSON')
+
+lakes.to_file(LAKES_CLEAN_SHP_FILEPATH)
