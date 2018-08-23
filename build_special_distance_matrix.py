@@ -5,7 +5,7 @@ import numpy as np
 LAKES_FILEPATH = 'D/DNR HYDRO/lakes clean.geojson'
 OUT_MATRIX_FILEPATH = 'D/dist matrix'
 
-# Doesn't really make sense to use centroid to centroid distance for lakes, especiall with close distances
+# Doesn't really make sense to use centroid to centroid distance for lakes, especially with close distances
 # Using centroids, larger lakes will be defined as farther away than it really is
 # I think logically it makes more sense to do shoreline to shoreline distance
 # this is a computationally intensive task, so i only do it in close region. precision matters less the farther out
@@ -29,7 +29,10 @@ dmat.fill(np.nan)
 
 ctds = lakes.centroid
 assert lakes.index[-1] == (len(lakes)-1)
-for i in lakes.index:
+tempidx = list(lakes.index[:-1])
+tempidx.reverse()
+#for i in lakes.index[:-1]):
+for i in tempidx:
     #first take lakes only where i<j so we don't compute the same distance twice
     this_lake = lakes.loc[i,'geometry']
     dists = ctds[(i+1):].apply(lambda x: x.distance(this_lake.centroid))
@@ -52,8 +55,7 @@ for i in lakes.index:
 #mirror the matrix over the diagonal so [i,j] == [j,i]
 #the diagonal will remain nan
 for i in range(len(lakes)):
-    for j in range(len(lakes)):
-        if i < j:
+    for j in range(i+1,len(lakes)):
             dmat[j,i] = dmat[i,j]
 
 np.save(OUT_MATRIX_FILEPATH,dmat)

@@ -1,28 +1,11 @@
 import geopandas as gpd
-
+import pandas as pd
 LAKES_FILEPATH = 'D/DNR HYDRO/lakes.geojson'
 LAKES_CLEAN_FILEPATH = 'D/DNR HYDRO/lakes clean.geojson'
 LAKES_CLEAN_SHP_FILEPATH = 'D/DNR HYDRO/lakes clean'
+SAMPLES_FILEPATH = 'D/Water Samples/by lake.csv'
 
 lakes = gpd.read_file(LAKES_FILEPATH)
-
-# bad_classes = ['Riverine island','Island or Land']
-# lakes = lakes[~lakes['wb_class'].isin(bad_classes)]
-
-good_classes = ['Lake or Pond','Reservoir','Mine or Gravel Pit','Artificial Basin']
-lakes = lakes[lakes['wb_class'].isin(good_classes)]
-
-bad_lake_fids = [84323, 82458,
-                 74280,74424, #sub basins of cedar lake near mille lacs. no main basin and samples match to main basin
-                 109255,109663,109321,109122, #weird tiny subbasin of Whiteface Reservoir. Samples match up to whole lake
-                 31678, #Cenaiko near MPLS tiny mini basin
-                 92821,116858,82252,22499,23944,93829,97042,13000,110278 #some duplicate dowlknums. mos
-                 ]
-lakes = lakes[~lakes['fid'].isin(bad_lake_fids)]
-
-# Mud lake is invalid but there's a quick fix, i guess
-#lakes.geometry[125707] = lakes.loc[125707, 'geometry'].buffer(0)
-# removed already because it's a wetland
 
 #remove '<Null>' and 00000000 and 0 from dowlknums
 def cleandowlknum(dowlknum):
@@ -41,13 +24,26 @@ sublakes = lakes[lakes['sub_flag'] == 'Y']
 full_basin_dowlknums = sublakes['dowlknum'].apply(lambda x: x[:-2] + '00' if len(x) > 0 else x).unique()
 lakes = lakes[~lakes['dowlknum'].isin(full_basin_dowlknums)]
 
-# keep only those with dowlknum
-lakes = lakes[lakes['dowlknum']!='']
-
 lakes['dowlknum'] = lakes['dowlknum'].apply(int)
+#drop lake superior
+lakes = lakes[lakes['dowlknum']!=16000100]
 
-lakes = lakes[~(lakes['outside_mn']=='Y')]
+#mostly on the border and have instate/outstate representations
+lakes = lakes[lakes['outside_mn']!='Y']
 
+#some odd duplicates exist for "alternative geometries".
+#see metadata ftp://ftp.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_state_dnr/water_dnr_hydrography/metadata/metadata.html
+dups = lakes.duplicated('dowlknum',keep=False)
+lakes = lakes[~(dups & lakes['fw_id'].isin([88888,0]))]
+
+#one more duplicate that has no logic
+lakes = lakes[lakes['fid']!=61584]
+
+#Keep only those in the the samples
+lakes_w_tsi = pd.read_csv(SAMPLES_FILEPATH,usecols=['dowlknum'])
+
+lakes = lakes[lakes['dowlknum'].isin(lakes_w_tsi['dowlknum'])]
+#loss of 29 lakes not bad
 
 useless_columns = ['fw_id','lake_class', 'acres', 'shore_mi','center_utm','center_u_1','dnr_region','fsh_office',
                    'outside_mn','delineated','delineatio','delineat_1','delineat_2','approved_b','approval_d',
@@ -56,11 +52,7 @@ useless_columns = ['fw_id','lake_class', 'acres', 'shore_mi','center_utm','cente
 
 lakes.drop(useless_columns,axis=1,inplace=True)
 
-#drop lake superior
-lakes = lakes[lakes['dowlknum']!=16000100]
 
-#only lakes greater than 100000 sqaure meters, about 25 acres
-lakes = lakes[lakes['shape_Area']>100000]
 
 #attach water basins
 #DNR level 8 the smalles
@@ -69,28 +61,39 @@ l8 = l8[['AREA','MAJOR','MINOR5','CATCH_ID','geometry']]
 l8.columns = ['ws 8 area','ws major','ws minor','ws 8','geometry']
 
 
-
-
-#8847 before
+#3389 before
 lakes = gpd.sjoin(lakes,l8,how='left',op='intersects')
+#3966 after. I think this is because there are some that are in both
+#index_right column has been added. its is the index from l8
 
 lakes.reset_index(drop=True,inplace=True)
-#9726 after. I think this is because there are some that are in both
+
 #lets check it out
 dups = lakes[lakes.duplicated('dowlknum',keep=False)]
 overlaps = []
+#for each lake that has been duplicated by the spatial join.
+# these lakes exist in two watersheds, usually right on the edge
 for i in range(len(dups)):
+    # get the polygon of the lake
     lake_poly = dups.iloc[i]['geometry']
+
+    #get the polgon of the watershed using the index column added in the spatial join
     l8_index = dups.iloc[i]['index_right']
     watershed_poly = l8.loc[l8_index,'geometry']
+
+    #calculate the overlap area between each
     overlaps.append(lake_poly.intersection(watershed_poly).area)
+
+# in the dataframe of the duplicates sort by lake and overlaps size.
+# the ones with the small overlap are labelled as bad and will be removed
 dups['overlap area'] = overlaps
 dups.sort_values(['dowlknum','overlap area'],ascending=[True,False],inplace=True)
 dups['bad'] = dups.duplicated('dowlknum',keep='first')
 
+#back to 3389
 lakes = lakes.drop(dups[dups['bad']].index)
-
+lakes = lakes.drop('index_right',1)
 
 lakes.to_file(LAKES_CLEAN_FILEPATH,driver='GeoJSON')
 
-lakes.to_file(LAKES_CLEAN_SHP_FILEPATH)
+lakes.to_file(LAKES_CLEAN_SHP_FILEPATH) #for easier viewing

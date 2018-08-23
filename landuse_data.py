@@ -1,17 +1,13 @@
 import geopandas as gpd
 import rasterio
-from rasterio import features
 import numpy as np
-import itertools
-from scipy.sparse import bsr_matrix
+
 
 LAKES_FILEPATH = 'D/DNR HYDRO/lakes clean.geojson'
 LANDCOVER_FILEPATHS = ['D/Land Cover/NLCD 2001 - Land Cover1.tif',
                        'D/Land Cover/NLCD 2006 - Land Cover1.tif',
                        'D/Land Cover/NLCD 2011 - Land Cover1.tif'
                        ]
-
-OUTPUT_FILEPATH = 'D/Land Cover/Land Cover Surrounding Lakes.csv'
 
 #####PROCESS#####
 #1. Import the cleaned lake geometries
@@ -81,6 +77,9 @@ from rasterio.transform import guard_transform
 all_touched = False  # raster conversion method. True=polygon covers cell, False=cell center in poly
 from rasterio.enums import MergeAlg
 
+
+new_col_names = [lc_type_str + ' share' for lc_type_str in land_cover_dict]
+
 #get the shape and resolution and stuff of the image we are comparing to
 for LANDCOVER_FILEPATH in LANDCOVER_FILEPATHS:
 
@@ -95,14 +94,13 @@ for LANDCOVER_FILEPATH in LANDCOVER_FILEPATHS:
 
     transform = guard_transform(meta['transform'])
 
-    for ring_size in ['10kring','100ring','500ring','1kring']:
+    #for ring_size in ['10kring','100ring','500ring','1kring']:
+    for ring_size in ['10kring']:
 
         print(year,ring_size) #for progress tracking
 
+        #convert geometries into dict with type:polygon and coordinates:(allthevvertices)
         gis = lakes['geo '+ ring_size].apply(lambda x: getattr(x, '__geo_interface__')) #takes 3 seconds
-
-        new_col_names = [lc_type_str + ' ' + ring_size + ' share ' + year
-                         for lc_type_str in land_cover_dict]
 
         lakes_results = lakes[['dowlknum']].copy()
 
@@ -130,8 +128,27 @@ for LANDCOVER_FILEPATH in LANDCOVER_FILEPATHS:
             ring_lc_dict = dict(zip(*np.unique(ring_lc, return_counts=True)))
             cell_ct = len(ring_lc)
             for lc_type_str, lc_type in land_cover_dict.items():
-                lakes_results.loc[i,lc_type_str + ' ' + ring_size + ' share ' + year] = round(ring_lc_dict.get(lc_type, 0) / cell_ct,4)
+                lakes_results.loc[i,lc_type_str + ' share'] = round(ring_lc_dict.get(lc_type, 0) / cell_ct,4)
 
         print('vals inserted')
         lakes_results.to_csv('D/Land Cover/Land Cover Surrounding Lakes ' + ring_size + ' ' + year +'.csv', index=False)
         print('saved')
+
+#plot
+# import pandas as pd
+# l500_2011 = pd.read_csv('D/Land Cover/Land Cover Surrounding Lakes 500 2011.csv')
+# data = l500_2011[l500_2011['dowlknum']==73010600]
+# idx = range(0,15)
+# values = data.drop('dowlknum',1).values.flatten()
+# from matplotlib import pyplot as plt
+# names = ['Open Water','Developed O','Developed L','Developed M','Developed H','Barren','Forest D','Forest E',
+#          'Forest M','Shrub','Grassland','Pasture','Crops','Wetland','EH Wetland']
+# colors = ['#476ba0','#ddc9c9','#d89382','#ed0000','#aa0000','#b2ada3','#68aa63','#1c6330','#b5c98e',
+#           '#ccba7c','#e2e2c1','#dbd83c','#aa7028','#bad8ea','#70a3ba']
+# bars = plt.bar(idx,values*100)
+# for bar,color in zip(bars,colors):
+#     bar.set_facecolor(color)
+#     bar.set_edgecolor('black')
+# plt.xticks(idx,names,rotation=45, ha="right", rotation_mode="anchor")
+# plt.ylabel('Percent')
+# plt.title('Land Cover Around Big Fish Lake')
