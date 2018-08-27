@@ -29,12 +29,10 @@ dmat.fill(np.nan)
 
 ctds = lakes.centroid
 assert lakes.index[-1] == (len(lakes)-1)
-tempidx = list(lakes.index[:-1])
-tempidx.reverse()
-#for i in lakes.index[:-1]):
-for i in tempidx:
-    #first take lakes only where i<j so we don't compute the same distance twice
+
+for i in lakes.index[:-1]:
     this_lake = lakes.loc[i,'geometry']
+    # only need distances after current index so we don't compute twice
     dists = ctds[(i+1):].apply(lambda x: x.distance(this_lake.centroid))
 
     if isinstance(this_lake, Polygon):  # convert all to multipoly for consistency
